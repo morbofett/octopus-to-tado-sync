@@ -35,3 +35,12 @@ jobs:
           --mprn "${{ secrets.OCTOPUS_MPRN }}" \
           --gas-serial-number "${{ secrets.OCTOPUS_GAS_SERIAL }}" \
           --octopus-api-key "${{ secrets.OCTOPUS_API_KEY }}"
+          
+    - name: Upload Tado login diagnostic
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: tado-login-debug
+        path: tado-login-result.png
+        if-no-files-found: ignore
+        retention-days: 1
