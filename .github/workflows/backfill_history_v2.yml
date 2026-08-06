@@ -1,0 +1,106 @@
+name: Backfill Tado Energy IQ history
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Upload the previewed readings to Tado"
+        required: true
+        default: false
+        type: boolean
+      years:
+        description: "Years of Octopus history requested"
+        required: true
+        default: "3"
+        type: string
+      anchor_date:
+        description: "Physical meter-reading date (YYYY-MM-DD)"
+        required: true
+        default: "2026-08-06"
+        type: string
+      anchor_reading:
+        description: "Exact physical gas reading in m³"
+        required: true
+        default: "13835.877"
+        type: string
+      allow_incomplete_coverage:
+        description: "Allow upload if Octopus has not reached the anchor date"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    env:
+      TADO_EMAIL: ${{ secrets.TADO_EMAIL }}
+      TADO_PASSWORD: ${{ secrets.TADO_PASSWORD }}
+      OCTOPUS_MPRN: ${{ secrets.OCTOPUS_MPRN }}
+      OCTOPUS_GAS_SERIAL: ${{ secrets.OCTOPUS_GAS_SERIAL }}
+      OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in TADO_EMAIL TADO_PASSWORD OCTOPUS_MPRN OCTOPUS_GAS_SERIAL OCTOPUS_API_KEY
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is missing or empty"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Preview or apply historical backfill
+        shell: bash
+        run: |
+          args=(
+            --years "${{ inputs.years }}"
+            --anchor-date "${{ inputs.anchor_date }}"
+            --anchor-reading "${{ inputs.anchor_reading }}"
+          )
+
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+
+          if [ "${{ inputs.allow_incomplete_coverage }}" = "true" ]; then
+            args+=(--allow-incomplete-coverage)
+          fi
+
+          python -u backfill_octopus_to_tado.py "${args[@]}"
+
+      - name: Upload preview CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tado-backfill-preview
+          path: tado-backfill-preview.csv
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload Tado login diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tado-login-debug
+          path: tado-login-result.png
+          if-no-files-found: ignore
+          retention-days: 1
