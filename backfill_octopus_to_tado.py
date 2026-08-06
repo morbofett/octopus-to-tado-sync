@@ -725,11 +725,11 @@ def main() -> int:
     print(f"Preview: {args.preview_file}")
 
     if coverage.gaps:
-        print(
-            "WARNING: internal Octopus data gaps were found; upload will "
-            "remain blocked.",
-            file=sys.stderr,
-        )
+        print("WARNING: internal Octopus data gaps were found:")
+        for gap in coverage.gaps:
+            print(f"  {gap}")
+        print("Upload remains blocked.", file=sys.stderr)
+    
     if not coverage.complete_to_anchor:
         print(
             "WARNING: Octopus has not reached the anchor boundary. Leave "
