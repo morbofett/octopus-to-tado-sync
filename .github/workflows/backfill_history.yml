@@ -4,15 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: "Upload readings to Tado (false only creates a preview)"
+        description: "Upload readings to Tado"
         required: true
         default: false
         type: boolean
+
       years:
         description: "Years of Octopus history"
         required: true
         default: "3"
         type: string
+
+      anchor_date:
+        description: "Date of physical meter photo"
+        required: true
+        default: "2026-08-06"
+        type: string
+
+      anchor_reading:
+        description: "Exact physical meter reading in m³"
+        required: true
+        default: "13835.877"
+        type: string
+
+      allow_incomplete_coverage:
+        description: "Allow incomplete Octopus coverage"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   backfill:
@@ -50,13 +69,24 @@ jobs:
           done
           exit "$missing"
 
-      - name: Preview or apply backfill
+
+      - name: Build or apply historical backfill
         shell: bash
         run: |
-          args=(--years "${{ inputs.years }}")
+          args=(
+            --years "${{ inputs.years }}"
+            --anchor-date "${{ inputs.anchor_date }}"
+            --anchor-reading "${{ inputs.anchor_reading }}"
+          )
+
           if [ "${{ inputs.apply }}" = "true" ]; then
             args+=(--apply)
           fi
+
+          if [ "${{ inputs.allow_incomplete_coverage }}" = "true" ]; then
+            args+=(--allow-incomplete-coverage)
+          fi
+
           python -u backfill_octopus_to_tado.py "${args[@]}"
 
       - name: Upload preview CSV
