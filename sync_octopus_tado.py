@@ -438,39 +438,62 @@ def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number, tado=N
 
 
 async def browser_login(url, username, password):
-
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True
-        )  # Set to True if you don't want a browser window
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto(url)
+        try:
+            await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
 
-        # Click the "Submit" button before login
-        await page.wait_for_selector('text="Submit"', timeout=5000)
-        await page.click('text="Submit"')
+            # Initial Tado device-authorisation page
+            await page.wait_for_selector('text="Submit"', timeout=10000)
+            await page.click('text="Submit"')
 
-        # Wait for the login form to appear
-        await page.wait_for_selector('input[name="loginId"]')
+            # Login page
+            await page.wait_for_selector(
+                'input[name="loginId"]',
+                timeout=15000,
+            )
 
-        # Replace with actual selectors for your site
-        await page.fill('input[id="loginId"]', username)
-        await page.fill('input[name="password"]', password)
+            await page.fill('input[id="loginId"]', username)
+            await page.fill('input[name="password"]', password)
 
-        await page.click('button.c-btn--primary:has-text("Sign in")')
+            await page.click(
+                'button.c-btn--primary:has-text("Sign in")'
+            )
 
-        # Optionally take a screenshot
-        await page.screenshot(path="screenshot.png")
+            # Do not depend on Tado's internal success-page CSS classes.
+            # Instead, wait for the login form to disappear.
+            await page.locator(
+                'input[name="loginId"]'
+            ).wait_for(
+                state="hidden",
+                timeout=30000,
+            )
 
-        await page.wait_for_selector(
-            ".text-center.message-screen.b-bubble-screen__spaced", timeout=10000
-        )
+            # Give the OAuth device authorisation request time to complete.
+            await page.wait_for_timeout(3000)
 
-        # Take a screenshot (optional)
-        await page.screenshot(path="after-message.png")
-        await browser.close()
+            await page.screenshot(
+                path="tado-login-result.png",
+                full_page=True,
+            )
+
+        except Exception:
+            # Capture whatever Tado displayed when the login failed.
+            await page.screenshot(
+                path="tado-login-result.png",
+                full_page=True,
+            )
+            raise
+
+        finally:
+            await browser.close()
 
 
 def tado_login(username, password):
